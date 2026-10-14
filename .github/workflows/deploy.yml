@@ -39,7 +39,7 @@ jobs:
           EB_APPLICATION: printinf-staging
           EB_ENVIRONMENT: Printinf-staging-env
         run: |
-          VERSION_LABEL="github-${GITHUB_SHA}-${GITHUB_RUN_ID}"
+          VERSION_LABEL="github-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           BUCKET=$(aws elasticbeanstalk create-storage-location \
             --region "$AWS_REGION" \
             --query S3Bucket \
