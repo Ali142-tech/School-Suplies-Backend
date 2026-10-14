@@ -1,0 +1,39 @@
+/.phpunit.cache
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+.env
+.env.backup
+.env.production
+# Every other environment variant (.env.local, .env.staging, .env.testing, ...) is ignored too.
+# Documented examples stay tracked.
+.env.*
+!.env.example
+!.env.*.example
+.phpactor.json
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+/auth.json
+/.fleet
+/.idea
+/.nova
+/.vscode
+/.zed
+
+# Filament front-end assets are generated, not source. Deployment rebuilds them with:
+#   php artisan filament:assets      (or filament:upgrade)
+# Only these three generated folders are ignored; the rest of public/ stays tracked.
+/public/css/filament
+/public/js/filament
+/public/fonts/filament
+
+# Local databases and logs (also covered by database/.gitignore and storage/logs/.gitignore)
+/database/*.sqlite*
+/storage/logs/*.log
