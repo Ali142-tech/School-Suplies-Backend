@@ -36,6 +36,12 @@ class Vendor extends Model
         return $this->hasMany(Product::class);
     }
 
+    /** Categories owned by this vendor (platform-wide categories have a null vendor_id and are not included). */
+    public function categories()
+    {
+        return $this->hasMany(Category::class);
+    }
+
     public function category()
     {
         return $this->belongsTo(Category::class);

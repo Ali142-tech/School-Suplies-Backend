@@ -14,6 +14,7 @@ use App\Models\StoreDomain;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Models\VendorMembership;
+use App\Rules\PlainText;
 use App\Services\Cms\SiteSettings;
 use App\Services\ImageStore;
 use App\Services\VendorReviewService;
@@ -260,5 +261,61 @@ class VendorController extends Controller
         $membership->delete();
 
         return response()->json(['message' => 'Vendor membership removed.']);
+    }
+
+    public function categories(Request $request)
+    {
+        $categories = $this->vendor($request)->categories()->withCount('products')->orderBy('name')->get(['id', 'name', 'slug', 'description', 'is_active']);
+
+        return response()->json(['data' => $categories]);
+    }
+
+    public function storeCategory(Request $request)
+    {
+        $this->manager($request);
+        $v = $this->vendor($request);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120', new PlainText, Rule::unique('categories', 'name')->where('vendor_id', $v->id)],
+            'description' => ['nullable', 'string', 'max:500', new PlainText],
+        ]);
+        abort_if($v->categories()->count() >= 100, 422, 'A store can have at most 100 categories.');
+        $category = $v->categories()->create([...$data, 'slug' => $this->uniqueCategorySlug($v, $data['name']), 'is_active' => true]);
+
+        return response()->json(['data' => $category], 201);
+    }
+
+    public function updateCategory(Request $request, string $vendor, Category $category)
+    {
+        $this->manager($request);
+        $v = $this->vendor($request);
+        abort_unless($category->vendor_id === $v->id, 404);
+        $data = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:120', new PlainText, Rule::unique('categories', 'name')->where('vendor_id', $v->id)->ignore($category->id)],
+            'description' => ['nullable', 'string', 'max:500', new PlainText],
+            'is_active' => 'sometimes|boolean',
+        ]);
+        $category->update($data);
+
+        return response()->json(['data' => $category->fresh()]);
+    }
+
+    public function deleteCategory(Request $request, string $vendor, Category $category)
+    {
+        $this->manager($request);
+        abort_unless($category->vendor_id === $this->vendor($request)->id, 404);
+        $category->delete();
+
+        return response()->json(['message' => 'Category deleted.']);
+    }
+
+    private function uniqueCategorySlug(Vendor $vendor, string $name): string
+    {
+        $base = Str::limit(Str::slug($name) ?: 'category', 100, '');
+        $slug = $base;
+        for ($i = 2; $vendor->categories()->where('slug', $slug)->exists(); $i++) {
+            $slug = $base.'-'.$i;
+        }
+
+        return $slug;
     }
 }

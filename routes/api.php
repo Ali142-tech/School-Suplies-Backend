@@ -78,6 +78,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/reapply', [VendorController::class, 'reapply'])->middleware('throttle:4,1,vendor-reapply');
             Route::get('/dashboard', [VendorController::class, 'dashboard']);
             Route::get('/products', [VendorController::class, 'products']);
+            Route::get('/categories', [VendorController::class, 'categories']);
             Route::get('/pages', [VendorPageController::class, 'index']);
             Route::get('/pages/{page}', [VendorPageController::class, 'show'])->whereNumber('page');
             Route::get('/pages/{page}/preview', [VendorPageController::class, 'preview'])->whereNumber('page');
@@ -91,6 +92,9 @@ Route::prefix('v1')->group(function () {
                 Route::post('/products', [VendorController::class, 'storeProduct']);
                 Route::put('/products/{product}', [VendorController::class, 'updateProduct']);
                 Route::delete('/products/{product}', [VendorController::class, 'deleteProduct']);
+                Route::post('/categories', [VendorController::class, 'storeCategory']);
+                Route::put('/categories/{category}', [VendorController::class, 'updateCategory'])->whereNumber('category');
+                Route::delete('/categories/{category}', [VendorController::class, 'deleteCategory'])->whereNumber('category');
                 Route::post('/products/{product}/images', [VendorController::class, 'image']);
                 Route::put('/products/{product}/inventory', [VendorController::class, 'inventory']);
                 Route::patch('/orders/{order}', [VendorController::class, 'updateOrder']);

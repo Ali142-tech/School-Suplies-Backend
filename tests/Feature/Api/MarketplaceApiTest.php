@@ -160,6 +160,30 @@ class MarketplaceApiTest extends TestCase
         $this->assertDatabaseMissing('store_domains', ['vendor_id' => $response->json('data.vendor.id')]);
     }
 
+    public function test_vendor_can_register_with_only_name_email_and_password(): void
+    {
+        $this->postJson('/api/v1/auth/vendor/register', ['name' => 'Quick Seller', 'email' => 'quick@example.test', 'password' => 'StrongPassword123'])
+            ->assertCreated()->assertJsonPath('data.vendor.status', 'pending')->assertJsonPath('data.user.role', 'vendor')->assertJsonStructure(['token']);
+        $this->assertDatabaseHas('vendors', ['name' => 'Quick Seller', 'email' => 'quick@example.test', 'category_id' => null, 'business_address' => null, 'status' => 'pending']);
+    }
+
+    public function test_vendor_registration_rejects_an_invalid_category_but_accepts_an_active_platform_one(): void
+    {
+        $payload = ['name' => 'Cat Seller', 'email' => 'cat@example.test', 'password' => 'StrongPassword123'];
+        $owner = User::factory()->create(['role' => 'vendor']);
+        $other = Vendor::create(['owner_id' => $owner->id, 'name' => 'Other', 'slug' => 'other-shop', 'status' => 'active']);
+        $vendorOwned = Category::create(['vendor_id' => $other->id, 'name' => 'Private', 'slug' => 'private', 'is_active' => true]);
+        $inactive = Category::create(['name' => 'Retired', 'slug' => 'retired', 'is_active' => false]);
+        $active = Category::create(['name' => 'Paper', 'slug' => 'paper', 'is_active' => true]);
+
+        foreach ([999999, $vendorOwned->id, $inactive->id] as $bad) {
+            $this->postJson('/api/v1/auth/vendor/register', [...$payload, 'category_id' => $bad])->assertUnprocessable();
+        }
+        $this->assertDatabaseMissing('users', ['email' => 'cat@example.test']);
+        $this->postJson('/api/v1/auth/vendor/register', [...$payload, 'category_id' => $active->id])->assertCreated();
+        $this->assertDatabaseHas('vendors', ['email' => 'cat@example.test', 'category_id' => $active->id]);
+    }
+
     public function test_vendor_can_sign_in_while_pending_and_gets_its_own_store_status(): void
     {
         $category = Category::create(['name' => 'Paper', 'slug' => 'paper', 'is_active' => true]);
