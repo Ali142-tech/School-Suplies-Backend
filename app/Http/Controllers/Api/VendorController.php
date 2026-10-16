@@ -211,6 +211,22 @@ class VendorController extends Controller
         return response()->json(['data' => SiteSettings::withUrls($vendor, $settings->fresh())]);
     }
 
+    public function updateProfile(Request $request)
+    {
+        $this->manager($request);
+        $data = $request->validate([
+            'name' => 'required|string|max:160',
+            'email' => 'required|email:rfc|max:190',
+            'phone' => 'nullable|string|max:32',
+            'business_address' => 'nullable|string|max:1000',
+            'description' => 'nullable|string|max:2000',
+        ]);
+        $vendor = $this->vendor($request);
+        $vendor->update($data);
+
+        return response()->json(['data' => $vendor->fresh(), 'message' => 'Store profile saved.']);
+    }
+
     public function domains(Request $request)
     {
         return response()->json(['data' => $this->vendor($request)->domains()->get(['id', 'hostname', 'is_verified', 'created_at'])]);

@@ -53,6 +53,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
+        Route::put('/auth/password', [AuthController::class, 'changePassword'])->middleware('throttle:6,1,password-change');
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/notifications', [AuthController::class, 'notifications']);
         Route::patch('/notifications/{notification}', [AuthController::class, 'readNotification']);
@@ -99,6 +100,7 @@ Route::prefix('v1')->group(function () {
                 Route::put('/products/{product}/inventory', [VendorController::class, 'inventory']);
                 Route::patch('/orders/{order}', [VendorController::class, 'updateOrder']);
                 Route::put('/settings', [VendorController::class, 'updateSettings']);
+                Route::put('/profile', [VendorController::class, 'updateProfile']);
                 Route::post('/domains', [VendorController::class, 'addDomain']);
                 Route::delete('/domains/{domain}', [VendorController::class, 'removeDomain']);
                 Route::post('/members', [VendorController::class, 'addMember']);

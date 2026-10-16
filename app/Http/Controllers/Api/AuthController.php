@@ -56,6 +56,18 @@ class AuthController extends Controller
         return response()->json(['data' => $request->user()->fresh()]);
     }
 
+    public function changePassword(Request $request)
+    {
+        $data = $request->validate([
+            'current_password' => 'required|string',
+            'password' => ['required', 'confirmed', 'different:current_password', PasswordRule::min(10)->letters()->numbers()],
+        ]);
+        abort_unless(Hash::check($data['current_password'], $request->user()->password), 422, 'Your current password is incorrect.');
+        $request->user()->update(['password' => $data['password']]);
+
+        return response()->json(['message' => 'Your password has been changed.']);
+    }
+
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()?->delete();
