@@ -28,7 +28,7 @@ class VendorRegistrationController extends Controller
                     $fail('This storefront slug is reserved.');
                 }
             }],
-        ]);
+        ], ['email.unique' => 'An account already exists for this email address. Sign in or reset your password.']);
         abort_unless(empty($data['category_id']) || Category::whereKey($data['category_id'])->whereNull('vendor_id')->where('is_active', true)->exists(), 422, 'Choose an active platform category.');
         $slug = strtolower($data['store_slug'] ?? $this->uniqueSlug($data['business_name'] ?? $data['name']));
 
@@ -49,7 +49,7 @@ class VendorRegistrationController extends Controller
 
         return response()->json([
             'data' => ['user' => $user, 'vendor' => $vendor, 'approval_status' => $vendor->status],
-            'token' => $user->createToken('web')->plainTextToken,
+            'token' => \App\Support\TenantAccess::issueToken($user, null),
             'message' => 'Your account is ready. Your store is pending approval.',
         ], 201);
     }

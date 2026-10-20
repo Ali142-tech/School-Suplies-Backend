@@ -16,13 +16,13 @@ use App\Http\Controllers\Api\VendorRegistrationController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
-    Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:6,1,customer-register');
+    Route::post('/auth/register', [AuthController::class, 'register'])->middleware(['store.tenant:optional', 'throttle:6,1,customer-register']);
     Route::post('/auth/vendor/register', [VendorRegistrationController::class, 'store'])->middleware('throttle:4,1,vendor-register');
-    Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:8,1,login');
+    Route::post('/auth/login', [AuthController::class, 'login'])->middleware(['store.tenant:optional', 'throttle:8,1,login']);
     Route::prefix('school')->middleware('store.tenant')->group(function () {
         Route::post('/register', [SchoolController::class, 'register'])->middleware('throttle:6,1,school-register');
         Route::post('/login', [SchoolController::class, 'login'])->middleware('throttle:8,1,school-login');
-        Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
+        Route::middleware(['auth:sanctum', 'tenant.auth', 'user.active'])->group(function () {
             Route::get('/me', [SchoolController::class, 'me']);
             Route::put('/profile', [SchoolController::class, 'updateProfile']);
             Route::post('/logout', [SchoolController::class, 'logout']);
@@ -36,8 +36,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/', [SiteController::class, 'show']);
         Route::get('/pages/{slug}', [SiteController::class, 'page'])->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*');
     });
-    Route::post('/auth/password/forgot', [AuthController::class, 'forgot'])->middleware('throttle:3,1,password-forgot');
-    Route::post('/auth/password/reset', [AuthController::class, 'reset'])->middleware('throttle:6,1,password-reset');
+    Route::post('/auth/password/forgot', [AuthController::class, 'forgot'])->middleware(['store.tenant:optional', 'throttle:3,1,password-forgot']);
+    Route::post('/auth/password/reset', [AuthController::class, 'reset'])->middleware(['store.tenant:optional', 'throttle:6,1,password-reset']);
     // Shared storefront endpoints. On a vendor domain (X-Store-Host) they are confined to that verified vendor; without it they are the marketplace.
     Route::middleware('store.tenant:optional')->group(function () {
         Route::get('/vendors', [CatalogController::class, 'vendors']);
@@ -50,7 +50,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/printing/quotes', [PrintingController::class, 'requestQuote'])->middleware(['auth.optional', 'throttle:10,1,print-quote']);
     });
 
-    Route::middleware(['auth:sanctum', 'user.active'])->group(function () {
+    Route::middleware(['auth:sanctum', 'tenant.auth', 'user.active'])->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::put('/auth/profile', [AuthController::class, 'updateProfile']);
         Route::put('/auth/password', [AuthController::class, 'changePassword'])->middleware('throttle:6,1,password-change');

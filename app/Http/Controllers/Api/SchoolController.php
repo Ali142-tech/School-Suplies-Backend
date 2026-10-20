@@ -11,10 +11,12 @@ use App\Models\Product;
 use App\Models\School;
 use App\Models\User;
 use App\Support\ApiResponse;
+use App\Support\TenantAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class SchoolController extends Controller
@@ -38,14 +40,16 @@ class SchoolController extends Controller
             'name' => 'required|string|max:160', 'email' => 'required|email:rfc|max:190|unique:users,email',
             'password' => ['required', 'confirmed', Password::min(10)->letters()->numbers()], 'phone' => 'nullable|string|max:32',
             'school_name' => 'required|string|max:180', 'school_phone' => 'nullable|string|max:32', 'address' => 'nullable|string|max:2000',
-        ]);
+        ], ['email.unique' => 'An account already exists for this email address. Sign in or reset your password.']);
 
         $vendor = $this->vendor($request);
         $result = DB::transaction(function () use ($data, $vendor) {
-            $user = User::create(['name' => $data['name'], 'email' => $data['email'], 'password' => $data['password'], 'phone' => $data['phone'] ?? null, 'role' => 'school', 'is_active' => true]);
+            $user = new User(['name' => $data['name'], 'email' => $data['email'], 'password' => $data['password'], 'phone' => $data['phone'] ?? null, 'role' => 'school', 'is_active' => true]);
+            $user->vendor_id = $vendor->id;
+            $user->save();
             $user->school()->create(['vendor_id' => $vendor->id, 'name' => $data['school_name'], 'phone' => $data['school_phone'] ?? null, 'address' => $data['address'] ?? null]);
 
-            return ['user' => $user, 'token' => $user->createToken('school-web')->plainTextToken];
+            return ['user' => $user, 'token' => TenantAccess::issueToken($user, $vendor, 'school-web')];
         });
 
         return response()->json(['data' => $result['user']->load('school'), 'token' => $result['token']], 201);
@@ -59,7 +63,7 @@ class SchoolController extends Controller
             return response()->json(['message' => 'The supplied credentials are invalid for this store.'], 422);
         }
 
-        return response()->json(['data' => $user->load('school'), 'token' => $user->createToken('school-web')->plainTextToken]);
+        return response()->json(['data' => $user->load('school'), 'token' => TenantAccess::issueToken($user, $this->vendor($request), 'school-web')]);
     }
 
     public function me(Request $request)

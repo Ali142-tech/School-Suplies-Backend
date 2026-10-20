@@ -126,7 +126,7 @@ class StorefrontRoutingTest extends TestCase
         $b = $this->vendor('bilal');
         $pa = $this->product($a, 'Ali Notebook');
         $pb = $this->product($b, 'Bilal Notebook');
-        $buyer = User::factory()->create();
+        $buyer = User::factory()->create(['role' => 'customer', 'vendor_id' => $a->id]);
 
         $this->at('ali')->getJson('/api/v1/products?per_page=100')->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.name', 'Ali Notebook');
         $this->at('ali')->getJson('/api/v1/products?vendor=bilal&per_page=100')->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.name', 'Ali Notebook');
@@ -192,7 +192,7 @@ class StorefrontRoutingTest extends TestCase
 
         $this->withToken($token)->at('bilal')->postJson('/api/v1/checkout', $lines($pb))->assertForbidden();
         $this->withToken($token)->at('bilal')->getJson('/api/v1/cart')->assertForbidden();
-        $this->withToken($token)->withoutHeader('X-Store-Slug')->postJson('/api/v1/checkout', $lines($pb))->assertStatus(422);
+        $this->withToken($token)->withoutHeader('X-Store-Slug')->postJson('/api/v1/checkout', $lines($pb))->assertForbidden();
         $this->withToken($token)->at('ali')->postJson('/api/v1/checkout', $lines($pa))->assertCreated();
         $this->withToken($token)->at('ali')->getJson('/api/v1/school/products')->assertOk();
         $this->at('bilal')->postJson('/api/v1/school/login', ['email' => 'school@example.test', 'password' => 'SecureSchool123'])->assertStatus(422);   // not a school of that store

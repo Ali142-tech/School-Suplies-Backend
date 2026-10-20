@@ -30,7 +30,10 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('cms-media', fn (Request $request) => Limit::perMinute(30)->by($key('cms-media', $request)));
 
         ResetPassword::createUrlUsing(function ($user, string $token) {
-            return rtrim((string) env('FRONTEND_URL', 'http://localhost:3000'), '/').'/reset-password?'.http_build_query(['token' => $token, 'email' => $user->getEmailForPasswordReset()]);
+            $tenant = request()->attributes->get('tenant_vendor');
+            $base = $tenant && \App\Support\StorefrontRouting::isPathMode() ? \App\Support\StorefrontRouting::pathUrl($tenant->slug) : rtrim((string) env('FRONTEND_URL', 'http://localhost:3000'), '/');
+
+            return $base.'/reset-password?'.http_build_query(['token' => $token, 'email' => $user->getEmailForPasswordReset()]);
         });
     }
 }

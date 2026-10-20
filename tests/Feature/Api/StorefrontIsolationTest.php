@@ -33,6 +33,12 @@ class StorefrontIsolationTest extends TestCase
         return $vendor;
     }
 
+    /** Customers belong to the storefront they registered on; a null vendor is a central marketplace account. */
+    private function customer(?Vendor $vendor = null): User
+    {
+        return User::factory()->create(['role' => 'customer', 'vendor_id' => $vendor?->id]);
+    }
+
     private function product(Vendor $vendor, string $name, array $extra = [], int $stock = 10): Product
     {
         $product = Product::create(['vendor_id' => $vendor->id, 'name' => $name, 'slug' => str($name)->slug()->toString().'-'.$vendor->id, 'description' => "$name description", 'price' => 100, 'currency' => 'PKR', 'status' => 'published', 'type' => 'supply', ...$extra]);
@@ -180,18 +186,24 @@ class StorefrontIsolationTest extends TestCase
     public function test_cart_rejects_other_vendors_products_on_a_vendor_domain_and_shows_only_its_own_items(): void
     {
         [$a, $b, $p] = $this->stores();
-        $buyer = User::factory()->create();
+        $buyer = $this->customer($a);
 
         $this->actingAs($buyer)->on('ali.example.test')->postJson('/api/v1/cart/items', ['product_id' => $p['b1']->id, 'quantity' => 1])->assertStatus(422);
         $this->assertSame(0, Cart::where('user_id', $buyer->id)->first()?->items()->count() ?? 0);
         $this->actingAs($buyer)->on('ali.example.test')->postJson('/api/v1/cart/items', ['product_id' => $p['a1']->id, 'quantity' => 2, 'vendor_id' => $b->id])->assertCreated();
 
-        // The marketplace cart is multi-vendor (unchanged) ...
-        $this->actingAs($buyer)->market()->postJson('/api/v1/cart/items', ['product_id' => $p['b1']->id, 'quantity' => 1])->assertCreated();
-        $this->assertCount(2, $this->actingAs($buyer)->market()->getJson('/api/v1/cart')->assertOk()->json('data.items'));
-        // ... but a vendor storefront only ever sees and touches its own vendor's lines.
+        // A storefront customer has no marketplace session at all: neither the shared cart nor another store's cart is reachable.
+        $this->actingAs($buyer)->market()->postJson('/api/v1/cart/items', ['product_id' => $p['b1']->id, 'quantity' => 1])->assertForbidden();
+        $this->actingAs($buyer)->on('bilal.example.test')->getJson('/api/v1/cart')->assertForbidden();
         $this->assertSame(['Ali Notebook'], collect($this->actingAs($buyer)->on('ali.example.test')->getJson('/api/v1/cart')->json('data.items'))->pluck('product.name')->all());
-        $foreign = Cart::where('user_id', $buyer->id)->first()->items()->where('product_id', $p['b1']->id)->first();
+        // The central marketplace cart stays multi-vendor for central accounts (unchanged).
+        $central = $this->customer();
+        $this->actingAs($central)->market()->postJson('/api/v1/cart/items', ['product_id' => $p['b1']->id, 'quantity' => 1])->assertCreated();
+        $this->actingAs($central)->market()->postJson('/api/v1/cart/items', ['product_id' => $p['a1']->id, 'quantity' => 1])->assertCreated();
+        $this->assertCount(2, $this->actingAs($central)->market()->getJson('/api/v1/cart')->assertOk()->json('data.items'));
+        $this->actingAs($central)->on('ali.example.test')->getJson('/api/v1/cart')->assertForbidden();
+        // a line in someone else's cart cannot be touched by id
+        $foreign = Cart::where('user_id', $central->id)->first()->items()->first();
         $this->actingAs($buyer)->on('ali.example.test')->patchJson("/api/v1/cart/items/{$foreign->id}", ['quantity' => 9])->assertNotFound();
         $this->actingAs($buyer)->on('ali.example.test')->deleteJson("/api/v1/cart/items/{$foreign->id}")->assertNotFound();
         $this->assertSame(1, $foreign->fresh()->quantity);
@@ -209,7 +221,7 @@ class StorefrontIsolationTest extends TestCase
     public function test_checkout_on_a_vendor_domain_rejects_foreign_products_atomically_and_belongs_to_that_vendor(): void
     {
         [$a, $b, $p] = $this->stores();
-        $buyer = User::factory()->create();
+        $buyer = $this->customer($a);
         $lines = fn (array ...$ids) => collect($ids)->map(fn ($i) => ['product_id' => $i[0]->id, 'quantity' => $i[1]])->all();
 
         // Mixed basket: the whole order is refused, nothing is created and no stock moves.
@@ -232,7 +244,7 @@ class StorefrontIsolationTest extends TestCase
     public function test_checkout_revalidates_price_stock_and_quantity_on_every_attempt(): void
     {
         [$a, , $p] = $this->stores();
-        $buyer = User::factory()->create();
+        $buyer = $this->customer($a);
         $buy = fn (int $qty, ?int $id = null) => $this->actingAs($buyer)->on('ali.example.test')->postJson('/api/v1/checkout', ['items' => [['product_id' => $id ?? $p['a1']->id, 'quantity' => $qty]], 'shipping_address' => self::ADDRESS]);
 
         $p['a1']->update(['price' => 250]);
@@ -252,7 +264,7 @@ class StorefrontIsolationTest extends TestCase
     public function test_marketplace_checkout_keeps_its_shared_multi_vendor_behaviour(): void
     {
         [$a, $b, $p] = $this->stores();
-        $buyer = User::factory()->create();
+        $buyer = $this->customer();
         $order = $this->actingAs($buyer)->market()->postJson('/api/v1/checkout', ['items' => [['product_id' => $p['a1']->id, 'quantity' => 1], ['product_id' => $p['b1']->id, 'quantity' => 2]], 'shipping_address' => self::ADDRESS])->assertCreated()->json('data');
         $this->assertEqualsCanonicalizing([$a->id, $b->id], OrderItem::where('order_id', $order['id'])->pluck('vendor_id')->all());
         // each vendor only sees its own lines of the shared order
@@ -300,11 +312,11 @@ class StorefrontIsolationTest extends TestCase
         [$user, $token] = $this->school('ali.example.test', 'school@example.test');
         $lines = fn ($product) => ['items' => [['product_id' => $product->id, 'quantity' => 1]], 'shipping_address' => self::ADDRESS];
 
-        // generic marketplace endpoints (no store header): confined to the school's own vendor
+        // generic marketplace endpoints (no store header): a school session is bound to its store and has no central access at all
         $this->market();
-        $this->withToken($token)->market()->postJson('/api/v1/checkout', $lines($p['b1']))->assertStatus(422);
-        $this->withToken($token)->market()->postJson('/api/v1/cart/items', ['product_id' => $p['b1']->id, 'quantity' => 1])->assertStatus(422);
-        $this->withToken($token)->market()->postJson('/api/v1/cart/items', ['product_id' => $p['a1']->id, 'quantity' => 1])->assertCreated();
+        $this->withToken($token)->market()->postJson('/api/v1/checkout', $lines($p['b1']))->assertForbidden();
+        $this->withToken($token)->market()->postJson('/api/v1/cart/items', ['product_id' => $p['b1']->id, 'quantity' => 1])->assertForbidden();
+        $this->withToken($token)->market()->postJson('/api/v1/cart/items', ['product_id' => $p['a1']->id, 'quantity' => 1])->assertForbidden();
         $this->assertSame(0, Order::count());
         // another vendor's storefront: refused outright (it cannot be used to bypass the school's association)
         foreach (['bilal.example.test'] as $host) {
@@ -336,11 +348,13 @@ class StorefrontIsolationTest extends TestCase
     public function test_customers_only_see_their_own_orders_and_other_vendors_cannot_touch_them(): void
     {
         [$a, $b, $p] = $this->stores();
-        $one = User::factory()->create();
-        $two = User::factory()->create();
+        $one = $this->customer($a);
+        $two = $this->customer();
         $order = $this->actingAs($one)->on('ali.example.test')->postJson('/api/v1/checkout', ['items' => [['product_id' => $p['a1']->id, 'quantity' => 1]], 'shipping_address' => self::ADDRESS])->assertCreated()->json('data');
         $this->actingAs($two)->market()->getJson("/api/v1/orders/{$order['id']}")->assertNotFound();
-        $this->actingAs($two)->getJson('/api/v1/orders')->assertOk()->assertJsonCount(0, 'data.data');
+        $this->actingAs($one)->market()->getJson("/api/v1/orders/{$order['id']}")->assertForbidden();   // a storefront customer has no central session
+        $this->actingAs($one)->on('ali.example.test')->getJson("/api/v1/orders/{$order['id']}")->assertOk();
+        $this->actingAs($two)->market()->getJson('/api/v1/orders')->assertOk()->assertJsonCount(0, 'data.data');
         $this->actingAs(User::find($b->owner_id))->patchJson("/api/v1/vendor/bilal/orders/{$order['id']}", ['status' => 'shipped'])->assertNotFound();
         $this->actingAs(User::find($b->owner_id))->getJson('/api/v1/vendor/bilal/orders')->assertOk()->assertJsonCount(0, 'data');
     }

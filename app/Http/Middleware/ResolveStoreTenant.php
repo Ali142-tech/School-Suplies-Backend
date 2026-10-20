@@ -30,15 +30,21 @@ class ResolveStoreTenant
 
     public function handle(Request $request, Closure $next, string $mode = 'required'): Response
     {
+        $request->attributes->set('tenant_vendor', $this->resolve($request, $mode === 'optional'));
+
+        return $next($request);
+    }
+
+    /** The verified, active vendor this request came through; null on the central platform (only when no store header was sent and $optional). */
+    public function resolve(Request $request, bool $optional = true): ?Vendor
+    {
         $slugHeader = strtolower(trim((string) $request->header('X-Store-Slug')));
         $hostHeader = strtolower(rtrim(trim((string) $request->header('X-Store-Host')), '.'));
 
-        if ($mode === 'optional' && $slugHeader === '' && $hostHeader === '') {
-            $request->attributes->set('tenant_vendor', null);
-
-            return $next($request);
-        }
         if ($slugHeader === '' && $hostHeader === '') {
+            if ($optional) {
+                return null;
+            }
             $hostHeader = strtolower(rtrim($request->getHost(), '.'));   // direct hit on a store domain (no frontend in between)
         }
 
@@ -52,9 +58,7 @@ class ResolveStoreTenant
         }
         abort_unless(count(array_unique(array_map(fn (Vendor $v) => $v->id, $vendors))) === 1, 404, 'Store not found.');
 
-        $request->attributes->set('tenant_vendor', $vendors[0]);
-
-        return $next($request);
+        return $vendors[0];
     }
 
     private function bySlug(string $slug): Vendor

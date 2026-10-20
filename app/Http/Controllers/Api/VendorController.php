@@ -264,6 +264,7 @@ class VendorController extends Controller
         $data = $request->validate(['email' => 'required|email|exists:users,email', 'role' => 'required|in:manager,staff']);
         $user = User::where('email', $data['email'])->firstOrFail();
         abort_unless($user->is_active, 422, 'Inactive accounts cannot be added.');
+        abort_if(in_array($user->role, ['school', 'platform_admin'], true) || ($user->vendor_id && $user->vendor_id !== $this->vendor($request)->id), 422, 'This account cannot be added to this store.');
         abort_if($user->id === $this->vendor($request)->owner_id, 422, 'The store owner already has full access.');
         $membership = $this->vendor($request)->memberships()->updateOrCreate(['user_id' => $user->id], ['role' => $data['role']]);
 

@@ -62,6 +62,12 @@ class User extends Authenticatable implements FilamentUser
         return $panel->getId() === 'superadmin' && $this->role === 'platform_admin' && $this->is_active;
     }
 
+    /** The vendor a storefront customer registered with (null for central marketplace accounts and for vendor/admin accounts). */
+    public function vendor()
+    {
+        return $this->belongsTo(Vendor::class);
+    }
+
     public function vendorMemberships()
     {
         return $this->hasMany(VendorMembership::class);

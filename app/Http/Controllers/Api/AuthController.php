@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\TenantAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
 class AuthController extends Controller
@@ -26,21 +28,28 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
-        $data = $request->validate(['name' => 'required|string|max:160', 'email' => 'required|email:rfc|max:190|unique:users,email', 'password' => ['required', 'confirmed', PasswordRule::min(10)->letters()->numbers()], 'phone' => 'nullable|string|max:32']);
-        $user = User::create([...$data, 'role' => 'customer']);
+        $data = $request->validate(['name' => 'required|string|max:160', 'email' => 'required|email:rfc|max:190|unique:users,email', 'password' => ['required', 'confirmed', PasswordRule::min(10)->letters()->numbers()], 'phone' => 'nullable|string|max:32'], ['email.unique' => 'An account already exists for this email address. Sign in or reset your password.']);
+        // The owning vendor is only ever the tenant the server resolved from the verified storefront; nothing in the body can set it.
+        $tenant = $request->attributes->get('tenant_vendor');
+        $user = new User($data);
+        $user->role = 'customer';
+        $user->vendor_id = $tenant?->id;
+        $user->save();
 
-        return response()->json(['data' => $user, 'token' => $user->createToken('web')->plainTextToken], 201);
+        return response()->json(['data' => $user, 'token' => TenantAccess::issueToken($user, $tenant)], 201);
     }
 
     public function login(Request $request)
     {
         $data = $request->validate(['email' => 'required|email', 'password' => 'required|string']);
         $user = User::where('email', $data['email'])->where('is_active', true)->first();
-        if (! $user || $user->role === 'school' || ! Hash::check($data['password'], $user->password)) {
+        $tenant = $request->attributes->get('tenant_vendor');
+        // One generic answer for: unknown email, wrong password, school account, or an account that belongs to a different store.
+        if (! $user || $user->role === 'school' || ! Hash::check($data['password'], $user->password) || ! TenantAccess::allows($user, $tenant)) {
             return response()->json(['message' => 'The supplied credentials are invalid.'], 422);
         }
 
-        return response()->json(['data' => $user->load('vendorMemberships.vendor:id,name,slug,status'), 'token' => $user->createToken('web')->plainTextToken]);
+        return response()->json(['data' => $user->load('vendorMemberships.vendor:id,name,slug,status'), 'token' => TenantAccess::issueToken($user, $tenant)]);
     }
 
     public function me(Request $request)
@@ -78,7 +87,11 @@ class AuthController extends Controller
     public function forgot(Request $request)
     {
         $request->validate(['email' => 'required|email']);
-        Password::sendResetLink($request->only('email'));
+        // Reset links are only sent for accounts that may sign in in this context; the answer is identical either way.
+        $user = User::where('email', $request->input('email'))->where('is_active', true)->first();
+        if ($user && TenantAccess::allows($user, $request->attributes->get('tenant_vendor'))) {
+            Password::sendResetLink($request->only('email'));
+        }
 
         return response()->json(['message' => 'If an account exists for that address, reset instructions will be sent.']);
     }
@@ -86,6 +99,10 @@ class AuthController extends Controller
     public function reset(Request $request)
     {
         $data = $request->validate(['token' => 'required', 'email' => 'required|email', 'password' => ['required', 'confirmed', PasswordRule::min(10)->letters()->numbers()]]);
+        $user = User::where('email', $data['email'])->first();
+        if ($user && ! TenantAccess::allows($user, $request->attributes->get('tenant_vendor'))) {
+            return response()->json(['message' => __(Password::INVALID_TOKEN)], 422);   // same answer as a bad token
+        }
         $status = Password::reset($data, function (User $user, string $password) {
             $user->forceFill(['password' => $password])->save();
             $user->tokens()->delete();

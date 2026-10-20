@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AuthenticateIfPresent;
+use App\Http\Middleware\EnforceTenantAuth;
 use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsureApprovedVendor;
 use App\Http\Middleware\EnsurePlatformAdmin;
@@ -29,7 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         );
         $middleware->append(TrustCloudFrontProto::class); // must run after TrustProxies has registered the trusted proxies
         $middleware->api(append: [UseRequestUrlForLocalStorage::class]);
-        $middleware->alias(['platform.admin' => EnsurePlatformAdmin::class, 'vendor.member' => ResolveVendor::class, 'vendor.approved' => EnsureApprovedVendor::class, 'user.active' => EnsureActiveUser::class, 'auth.optional' => AuthenticateIfPresent::class, 'store.tenant' => ResolveStoreTenant::class]);
+        $middleware->alias(['platform.admin' => EnsurePlatformAdmin::class, 'vendor.member' => ResolveVendor::class, 'vendor.approved' => EnsureApprovedVendor::class, 'user.active' => EnsureActiveUser::class, 'auth.optional' => AuthenticateIfPresent::class, 'store.tenant' => ResolveStoreTenant::class, 'tenant.auth' => EnforceTenantAuth::class]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->reportable(function (QueryException $e) {

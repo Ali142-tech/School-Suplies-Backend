@@ -17,14 +17,19 @@ class OrderController extends Controller
 {
     public function index(Request $request)
     {
-        return response()->json(['data' => $request->user()->orders()->with('items.vendor:id,name,slug')->latest()->paginate(20)]);
+        $tenant = Storefront::tenant($request);
+        $orders = $request->user()->orders()->when($tenant, fn ($q) => $q->whereHas('items', fn ($i) => $i->where('vendor_id', $tenant->id)))
+            ->with(['items' => fn ($q) => $q->when($tenant, fn ($i) => $i->where('vendor_id', $tenant->id)), 'items.vendor:id,name,slug'])->latest()->paginate(20);
+
+        return response()->json(['data' => $orders]);
     }
 
     public function show(Request $request, Order $order)
     {
-        abort_unless($order->customer_id === $request->user()->id, 404);
+        $tenant = Storefront::tenant($request);
+        abort_unless($order->customer_id === $request->user()->id && (! $tenant || $order->items()->where('vendor_id', $tenant->id)->exists()), 404);
 
-        return response()->json(['data' => $order->load('items.vendor:id,name,slug')]);
+        return response()->json(['data' => $order->load(['items' => fn ($q) => $q->when($tenant, fn ($i) => $i->where('vendor_id', $tenant->id)), 'items.vendor:id,name,slug'])]);
     }
 
     public function checkout(CheckoutRequest $request)

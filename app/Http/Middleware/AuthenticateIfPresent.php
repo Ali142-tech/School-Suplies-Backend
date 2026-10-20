@@ -12,7 +12,7 @@ class AuthenticateIfPresent
     public function handle(Request $request, Closure $next): Response
     {
         $user = Auth::guard('sanctum')->user();
-        if ($user?->is_active) {
+        if ($user?->is_active && \App\Support\TenantAccess::permits($request, $user, $request->attributes->get('tenant_vendor'))) {
             $request->setUserResolver(fn () => $user);
         }
 
