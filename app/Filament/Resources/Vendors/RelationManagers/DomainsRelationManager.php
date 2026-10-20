@@ -29,6 +29,9 @@ class DomainsRelationManager extends RelationManager
                 IconColumn::make('is_primary')->label('Primary')->boolean(),
                 TextColumn::make('verified_at')->dateTime()->placeholder('-'),
             ])
+            ->headerActions([VendorActions::assignPlatformSubdomain(), VendorActions::addCustomDomain()])
+            ->emptyStateHeading('No store domains')
+            ->emptyStateDescription('Assign this vendor its platform subdomain or a custom domain. Domains stay inactive until DNS/Vercel is configured and you activate them.')
             ->recordActions([VendorActions::activateDomain(), VendorActions::unverifyDomain()]);
     }
 }

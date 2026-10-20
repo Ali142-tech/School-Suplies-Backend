@@ -17,6 +17,7 @@ class ViewVendor extends ViewRecord
             VendorActions::reject(),
             VendorActions::suspend(),
             VendorActions::reactivate(),
+            VendorActions::assignPlatformSubdomain(),
             VendorActions::addCustomDomain(),
         ];
     }

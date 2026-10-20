@@ -25,15 +25,44 @@ class VendorReviewService
         return ['required', 'string', 'max:253', 'regex:'.self::HOSTNAME_REGEX, 'unique:store_domains,hostname'];
     }
 
+    /** What an admin typed → a bare lowercase hostname ("https://Shop.Example.com:443/path" → "shop.example.com"). */
+    public static function normalizeHostname(?string $input): string
+    {
+        $host = strtolower(trim((string) $input));
+        $host = preg_replace('#^[a-z][a-z0-9+.-]*://#', '', $host);
+        $host = preg_split('/[\/?#]/', $host)[0];
+        $host = preg_replace('/:\d+$/', '', $host);
+
+        return rtrim($host, '.');
+    }
+
     /** Attach a custom (non-platform) hostname to a vendor; verification/activation stays a separate manual step. */
     public function addCustomDomain(Vendor $vendor, string $hostname): StoreDomain
     {
-        Validator::make(['hostname' => $hostname], ['hostname' => $this->hostnameRules()])->validate();
-        $hostname = strtolower($hostname);
-        $platformDomain = strtolower((string) config('platform.domain'));
-        abort_if($platformDomain && ($hostname === $platformDomain || str_ends_with($hostname, '.'.$platformDomain)), 422, 'Platform subdomains are assigned by a Super Admin during vendor approval.');
+        abort_unless($vendor->status === 'active', 409, 'Domains can only be assigned to approved, active vendors.');
+        $hostname = self::normalizeHostname($hostname);
+        Validator::make(['hostname' => $hostname], ['hostname' => $this->hostnameRules()], ['hostname.unique' => 'This hostname is already assigned to a store.', 'hostname.regex' => 'Enter a valid hostname such as shop.example.com.'])->validate();
+        $platformDomain = StorefrontRouting::platformDomain();
+        abort_if($platformDomain && ($hostname === $platformDomain || str_ends_with($hostname, '.'.$platformDomain)), 422, 'Platform subdomains use "Assign platform subdomain"; this action is for custom domains.');
 
-        return $vendor->domains()->create(['hostname' => $hostname, 'is_verified' => false]);
+        return $vendor->domains()->create(['hostname' => $hostname, 'is_verified' => false, 'provisioning_status' => 'manual_pending', 'source' => 'custom', 'is_primary' => ! $vendor->domains()->where('is_primary', true)->exists()]);
+    }
+
+    /**
+     * The vendor's own subdomain of the platform domain ({slug}.PLATFORM_DOMAIN) for an already approved vendor that has none
+     * (approval only prepares it when a platform domain was configured at that time). Like approval it creates an inactive,
+     * unverified mapping; DNS/Vercel setup and activation stay separate manual steps.
+     */
+    public function assignPlatformSubdomain(Vendor $vendor): StoreDomain
+    {
+        abort_unless($vendor->status === 'active', 409, 'Domains can only be assigned to approved, active vendors.');
+        $hostname = StorefrontRouting::platformHostname($vendor->slug);
+        abort_unless($hostname, 503, 'Configure PLATFORM_DOMAIN before assigning platform subdomains.');
+        abort_if(StoreDomain::where('hostname', $hostname)->where('vendor_id', '!=', $vendor->id)->exists(), 422, 'This storefront hostname is already assigned.');
+        $existing = $vendor->domains()->where('hostname', $hostname)->first();
+        abort_if($existing, 409, 'This vendor already has the subdomain '.$hostname.'.');
+
+        return $vendor->domains()->create(['hostname' => $hostname, 'is_verified' => false, 'provisioning_status' => 'manual_pending', 'source' => 'platform_subdomain', 'is_primary' => ! $vendor->domains()->where('is_primary', true)->exists()]);
     }
 
     public function slugRules(Vendor $vendor): array
