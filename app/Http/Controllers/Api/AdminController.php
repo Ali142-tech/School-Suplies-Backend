@@ -12,6 +12,8 @@ use App\Models\Vendor;
 use App\Models\VendorSubscription;
 use App\Services\VendorReviewService;
 use App\Support\ApiResponse;
+use App\Support\Storefront;
+use App\Support\StorefrontRouting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -69,7 +71,9 @@ class AdminController extends Controller
         $data = $request->validate(['slug' => $reviews->slugRules($vendor)]);
         $approved = $reviews->approve($vendor, $data['slug'], $request->user());
 
-        return response()->json(['data' => $approved, 'message' => 'Vendor approved. Add the hostname in Vercel/DNS, then activate its domain mapping. In-app notification was recorded when available; email depends on the configured mailer.']);
+        $next = StorefrontRouting::isPathMode() ? 'The storefront is live at '.Storefront::url($approved).'.' : 'Add the hostname in Vercel/DNS, then activate its domain mapping.';
+
+        return response()->json(['data' => $approved, 'storefront_url' => Storefront::url($approved), 'message' => 'Vendor approved. '.$next.' In-app notification was recorded when available; email depends on the configured mailer.']);
     }
 
     public function rejectVendor(Request $request, Vendor $vendor, VendorReviewService $reviews)

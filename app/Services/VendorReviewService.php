@@ -6,6 +6,8 @@ use App\Models\StoreDomain;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Notifications\VendorApplicationReviewed;
+use App\Support\Storefront;
+use App\Support\StorefrontRouting;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -46,21 +48,25 @@ class VendorReviewService
     public function approve(Vendor $vendor, string $slug, User $reviewer): Vendor
     {
         Validator::make(['slug' => $slug], ['slug' => $this->slugRules($vendor)])->validate();
-        $platformDomain = strtolower(trim((string) config('platform.domain'), '.'));
-        abort_unless($platformDomain && ($platformDomain === 'localhost' || preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$/i', $platformDomain)), 503, 'Configure PLATFORM_DOMAIN before approving vendor storefronts.');
-        $hostname = strtolower($slug).'.'.$platformDomain;
+        // Path mode (default) publishes the store at /vendor/{slug} and needs no DNS, so PLATFORM_DOMAIN is optional there. Domain
+        // mode addresses stores by hostname, so it cannot approve anyone without a usable platform domain.
+        abort_if(StorefrontRouting::requiresPlatformDomain() && ! StorefrontRouting::platformDomain(), 503, 'Configure PLATFORM_DOMAIN before approving vendor storefronts.');
+        // When a platform domain is configured the (still inactive) subdomain mapping is prepared in either mode, so switching modes later needs no migration.
+        $hostname = StorefrontRouting::platformHostname($slug);
         $approved = DB::transaction(function () use ($reviewer, $vendor, $slug, $hostname) {
             $locked = Vendor::whereKey($vendor->id)->lockForUpdate()->firstOrFail();
             abort_unless($locked->status === 'pending' || $locked->status === 'rejected', 409, 'Only pending or rejected applications can be approved.');
-            abort_if(StoreDomain::where('hostname', $hostname)->where('vendor_id', '!=', $locked->id)->exists(), 422, 'This storefront hostname is already assigned.');
+            abort_if($hostname && StoreDomain::where('hostname', $hostname)->where('vendor_id', '!=', $locked->id)->exists(), 422, 'This storefront hostname is already assigned.');
             $locked->domains()->where('source', 'platform_subdomain')->delete();
             $locked->update(['slug' => strtolower($slug), 'status' => 'active', 'reviewed_by' => $reviewer->id, 'reviewed_at' => now(), 'approved_at' => now(), 'rejected_at' => null, 'rejection_reason' => null]);
-            $locked->domains()->updateOrCreate(['hostname' => $hostname], ['is_verified' => false, 'provisioning_status' => 'manual_pending', 'source' => 'platform_subdomain', 'is_primary' => true, 'verified_at' => null]);
+            if ($hostname) {
+                $locked->domains()->updateOrCreate(['hostname' => $hostname], ['is_verified' => false, 'provisioning_status' => 'manual_pending', 'source' => 'platform_subdomain', 'is_primary' => true, 'verified_at' => null]);
+            }
 
             return $locked->fresh(['owner', 'domains']);
         });
         try {
-            $approved->owner->notify(new VendorApplicationReviewed('approved', $hostname));
+            $approved->owner->notify(new VendorApplicationReviewed('approved', $hostname, null, StorefrontRouting::isPathMode() ? Storefront::url($approved) : null));
         } catch (\Throwable $exception) {
             report($exception);
         }

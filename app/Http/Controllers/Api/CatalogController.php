@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Vendor;
 use App\Support\ApiResponse;
 use App\Support\Storefront;
+use App\Support\StorefrontRouting;
 use Illuminate\Http\Request;
 
 class CatalogController extends Controller
@@ -31,13 +32,13 @@ class CatalogController extends Controller
     public function resolve(Request $request)
     {
         $slug = $request->query('slug');
-        $host = strtolower(rtrim(trim($request->query('host', '')), '.'));
+        $host = strtolower(rtrim(trim((string) $request->query('host', '')), '.'));
         abort_unless($slug || $host, 422, 'Provide a storefront slug or host.');
         $query = Vendor::where('status', 'active');
         if ($slug) {
             $query->where('slug', $slug);
         } else {
-            abort_unless(filter_var($host, FILTER_VALIDATE_IP) === false && preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$/i', $host), 422, 'Invalid storefront hostname.');
+            abort_unless(filter_var($host, FILTER_VALIDATE_IP) === false && preg_match(StorefrontRouting::HOSTNAME_REGEX, $host), 422, 'Invalid storefront hostname.');
             $query->whereHas('domains', fn ($d) => $d->where('hostname', $host)->where('is_verified', true)->where('provisioning_status', 'active'));
         } $vendor = $query->with(['settings:id,vendor_id,brand_color,banner_path'])->firstOrFail();
         abort_if(Storefront::tenant($request) && Storefront::tenant($request)->id !== $vendor->id, 404);
@@ -47,7 +48,7 @@ class CatalogController extends Controller
 
     private function publicVendor(Vendor $vendor): array
     {
-        return [...$vendor->only('id', 'name', 'slug', 'description', 'email', 'phone', 'logo_path'), 'settings' => $vendor->settings?->only('brand_color', 'banner_path')];
+        return [...$vendor->only('id', 'name', 'slug', 'description', 'email', 'phone', 'logo_path'), 'storefront_url' => Storefront::url($vendor), 'settings' => $vendor->settings?->only('brand_color', 'banner_path')];
     }
 
     public function categories(Request $request)

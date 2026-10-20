@@ -112,7 +112,7 @@ class SuperAdminPanelTest extends TestCase
         $this->assertSame(0, $vendor->domains()->count());
         $this->assertSame('active', $other->fresh()->status);
 
-        config(['platform.domain' => null]);
+        config(['platform.domain' => null, 'platform.storefront.mode' => 'domain']);   // path mode needs no platform domain; domain mode does
         Livewire::actingAs($admin)->test(ListVendors::class)
             ->callTableAction('approve', $vendor, ['slug' => 'fine-slug'])
             ->assertNotified('Action not allowed');

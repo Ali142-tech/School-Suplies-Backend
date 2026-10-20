@@ -25,7 +25,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Dedicated buckets so CMS and public-site traffic can never exhaust the login/checkout limits.
         $key = fn (string $name, Request $request) => $name.'|'.($request->user()?->getAuthIdentifier() ?? $request->ip());
-        RateLimiter::for('site-public', fn (Request $request) => Limit::perMinute(1200)->by('site-public|'.strtolower((string) ($request->header('X-Store-Host') ?: $request->getHost()))));
+        RateLimiter::for('site-public', fn (Request $request) => Limit::perMinute(1200)->by('site-public|'.strtolower((string) ($request->header('X-Store-Slug') ?: $request->header('X-Store-Host') ?: $request->getHost()))));
         RateLimiter::for('cms-write', fn (Request $request) => Limit::perMinute(120)->by($key('cms-write', $request)));
         RateLimiter::for('cms-media', fn (Request $request) => Limit::perMinute(30)->by($key('cms-media', $request)));
 

@@ -3,6 +3,7 @@
 namespace App\Filament\Support;
 
 use App\Models\StoreDomain;
+use App\Support\StorefrontRouting;
 use App\Models\Vendor;
 use App\Services\VendorReviewService;
 use Closure;
@@ -34,10 +35,12 @@ class VendorActions
         return Action::make('approve')
             ->icon('heroicon-o-check-circle')->color('success')
             ->visible(fn (Vendor $record) => in_array($record->status, ['pending', 'rejected'], true))
-            ->modalDescription('Assigns the storefront slug and creates its platform subdomain. DNS/Vercel must be configured manually, then activate the domain.')
+            ->modalDescription(fn () => StorefrontRouting::isPathMode()
+                ? 'Assigns the storefront slug. The store goes live at '.StorefrontRouting::pathUrl('{slug}').' immediately; no DNS is needed.'
+                : 'Assigns the storefront slug and creates its platform subdomain. DNS/Vercel must be configured manually, then activate the domain.')
             ->schema([
                 TextInput::make('slug')->label('Storefront slug')->required()->maxLength(63)
-                    ->helperText('Lowercase letters, numbers and hyphens. Becomes {slug}.'.config('platform.domain'))
+                    ->helperText(StorefrontRouting::isPathMode() ? 'Lowercase letters, numbers and hyphens. Becomes '.StorefrontRouting::pathUrl('{slug}') : 'Lowercase letters, numbers and hyphens. Becomes {slug}.'.config('platform.domain'))
                     ->default(fn (Vendor $record) => $record->requested_slug ?: $record->slug),
             ])
             ->action(fn (Vendor $record, array $data) => self::guard(fn () => app(VendorReviewService::class)->approve($record, $data['slug'], auth()->user()), 'Vendor approved'));

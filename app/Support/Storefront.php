@@ -8,8 +8,8 @@ use Illuminate\Http\Request;
 /**
  * Which vendor, if any, a storefront request is confined to.
  *
- * The vendor is never taken from request parameters. It comes from ResolveStoreTenant (a verified, active domain) or,
- * for school accounts, from the school's own vendor association.
+ * The vendor is never taken from request parameters. It comes from ResolveStoreTenant (an active vendor's slug in path mode, or a
+ * verified, active domain) or, for school accounts, from the school's own vendor association.
  */
 class Storefront
 {
@@ -17,6 +17,12 @@ class Storefront
     public static function tenant(Request $request): ?Vendor
     {
         return $request->attributes->get('tenant_vendor');
+    }
+
+    /** Public address of a vendor's storefront under the active routing mode (path or domain); null when it has none yet. */
+    public static function url(Vendor $vendor): ?string
+    {
+        return StorefrontRouting::storefrontUrl($vendor);
     }
 
     /**

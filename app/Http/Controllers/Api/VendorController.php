@@ -19,6 +19,7 @@ use App\Services\Cms\SiteSettings;
 use App\Services\ImageStore;
 use App\Services\VendorReviewService;
 use App\Support\ApiResponse;
+use App\Support\Storefront;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -39,14 +40,14 @@ class VendorController extends Controller
     {
         $v = $this->vendor($request);
 
-        return response()->json(['data' => ['vendor' => $v->only('id', 'name', 'slug', 'requested_slug', 'status', 'rejection_reason', 'reviewed_at', 'approved_at'), 'domains' => $v->domains()->get(['id', 'hostname', 'is_verified', 'provisioning_status', 'is_primary']), 'products' => $v->products()->count(), 'orders' => OrderItem::where('vendor_id', $v->id)->distinct('order_id')->count('order_id'), 'low_stock' => Inventory::whereHas('product', fn ($p) => $p->where('vendor_id', $v->id))->whereColumn('quantity', '<=', 'low_stock_threshold')->count(), 'sales' => OrderItem::where('vendor_id', $v->id)->whereIn('status', ['processing', 'shipped', 'delivered'])->sum('line_total')]]);
+        return response()->json(['data' => ['vendor' => $v->only('id', 'name', 'slug', 'requested_slug', 'status', 'rejection_reason', 'reviewed_at', 'approved_at') + ['storefront_url' => Storefront::url($v)], 'domains' => $v->domains()->get(['id', 'hostname', 'is_verified', 'provisioning_status', 'is_primary']), 'products' => $v->products()->count(), 'orders' => OrderItem::where('vendor_id', $v->id)->distinct('order_id')->count('order_id'), 'low_stock' => Inventory::whereHas('product', fn ($p) => $p->where('vendor_id', $v->id))->whereColumn('quantity', '<=', 'low_stock_threshold')->count(), 'sales' => OrderItem::where('vendor_id', $v->id)->whereIn('status', ['processing', 'shipped', 'delivered'])->sum('line_total')]]);
     }
 
     public function application(Request $request)
     {
         $v = $this->vendor($request);
 
-        return response()->json(['data' => ['vendor' => $v->only('id', 'name', 'slug', 'requested_slug', 'email', 'phone', 'business_address', 'category_id', 'status', 'rejection_reason', 'reviewed_at', 'approved_at'), 'domains' => $v->domains()->get(['id', 'hostname', 'is_verified', 'provisioning_status', 'is_primary'])]]);
+        return response()->json(['data' => ['vendor' => $v->only('id', 'name', 'slug', 'requested_slug', 'email', 'phone', 'business_address', 'category_id', 'status', 'rejection_reason', 'reviewed_at', 'approved_at') + ['storefront_url' => Storefront::url($v)], 'domains' => $v->domains()->get(['id', 'hostname', 'is_verified', 'provisioning_status', 'is_primary'])]]);
     }
 
     public function reapply(Request $request)
